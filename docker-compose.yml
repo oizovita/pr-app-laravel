@@ -1,0 +1,95 @@
+version: '2.4'
+services:
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    tty: true
+    environment:
+      - MODE=nginx
+    ports:
+      - "${FORWARD_NGINX_PORT:-80}:80"
+    volumes:
+      - ./:/var/www/html/laravelapp:rw
+      - ./nginx/conf.d/:/etc/nginx/conf.d/
+    networks:
+      - app_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10M"
+        max-file: "5"
+    healthcheck:
+       test: ["CMD", "/bin/bash", "docker-healthcheck.sh"]
+       interval: 60s
+       timeout: 10s
+       start_period: 60s
+       retries: 3
+
+  backend:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    volumes:
+      - ./:/var/www/html/laravelapp:rw
+      - ./docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:rw
+    env_file:
+      - .env
+    environment:
+      - MODE=backend
+      - ENVIRONMENT=${ENVIRONMENT:-DEVELOPMENT}
+    restart: unless-stopped
+    networks:
+      - app_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10M"
+        max-file: "5"
+    healthcheck:
+       test: ["CMD", "/bin/bash", "docker-healthcheck.sh"]
+       interval: 60s
+       timeout: 10s
+       start_period: 60s
+       retries: 3
+
+  db:
+    image: postgres:12
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-123456}
+      - POSTGRES_USER=${DB_USERNAME:-user}
+      - POSTGRES_DB=${DB_DATABASE:-forge}
+    ports:
+      - '${FORWARD_DB_PORT:-5432}:5432'
+    volumes:
+      - ${DATA_FOLDER:-./data}/postgresql/data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - app_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10M"
+        max-file: "5"
+
+  redis:
+    command: redis-server --appendonly yes
+    image: 'redis:5'
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    restart: unless-stopped
+    volumes:
+      - ${DATA_FOLDER:-./data}/redis/data:/data
+    networks:
+      - app_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10M"
+        max-file: "5"
+
+networks:
+  app_net:
+    name: app_net
+    driver: bridge
+    internal: false
